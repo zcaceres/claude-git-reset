@@ -93,4 +93,4 @@ The hook runs on every `Bash` tool call via `PreToolUse`:
 5. On match: exit 2 with a `BLOCKED:` message identifying the rule and listing safer alternatives.
 6. Otherwise: exit 0 to allow.
 
-Inspired by and structured after [`claude-rm-rf`](../claude-rm-rf).
+Inspired by and structured after [`claude-rm-rf`](https://github.com/zcaceres/claude-rm-rf).
