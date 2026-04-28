@@ -488,6 +488,90 @@ describe("Quoted prefix false positives (P2 follow-up)", () => {
   });
 });
 
+describe("Wrapper options before git (P1 follow-up)", () => {
+  test("sudo -n git reset --hard", async () => {
+    const { exitCode } = await runHook("sudo -n git reset --hard");
+    expect(exitCode).toBe(2);
+  });
+
+  test("sudo -E git push --force", async () => {
+    const { exitCode } = await runHook("sudo -E git push --force");
+    expect(exitCode).toBe(2);
+  });
+
+  test("sudo -u root git clean -fdx", async () => {
+    const { exitCode } = await runHook("sudo -u root git clean -fdx");
+    expect(exitCode).toBe(2);
+  });
+
+  test("env FOO=bar git reset --hard", async () => {
+    const { exitCode } = await runHook("env FOO=bar git reset --hard");
+    expect(exitCode).toBe(2);
+  });
+
+  test("env FOO=bar BAZ=qux git push --force", async () => {
+    const { exitCode } = await runHook(
+      "env FOO=bar BAZ=qux git push --force"
+    );
+    expect(exitCode).toBe(2);
+  });
+
+  test("env -i git reset --hard", async () => {
+    const { exitCode } = await runHook("env -i git reset --hard");
+    expect(exitCode).toBe(2);
+  });
+
+  test("env -u VAR git branch -D feature", async () => {
+    const { exitCode } = await runHook("env -u VAR git branch -D feature");
+    expect(exitCode).toBe(2);
+  });
+
+  // Wrappers should still let safe commands through.
+  test("sudo -n git status (still allowed)", async () => {
+    const { exitCode } = await runHook("sudo -n git status");
+    expect(exitCode).toBe(0);
+  });
+
+  test("env FOO=bar git status (still allowed)", async () => {
+    const { exitCode } = await runHook("env FOO=bar git status");
+    expect(exitCode).toBe(0);
+  });
+});
+
+describe("Subshell variants (P2 follow-up)", () => {
+  test("bash -lc 'git reset --hard'", async () => {
+    const { exitCode } = await runHook("bash -lc 'git reset --hard'");
+    expect(exitCode).toBe(2);
+  });
+
+  test("bash -l -c 'git reset --hard'", async () => {
+    const { exitCode } = await runHook("bash -l -c 'git reset --hard'");
+    expect(exitCode).toBe(2);
+  });
+
+  test("bash -ic 'git push --force'", async () => {
+    const { exitCode } = await runHook("bash -ic 'git push --force'");
+    expect(exitCode).toBe(2);
+  });
+
+  test("zsh -ic 'git reset --hard'", async () => {
+    const { exitCode } = await runHook("zsh -ic 'git reset --hard'");
+    expect(exitCode).toBe(2);
+  });
+
+  test("bash --login -c 'git reset --hard'", async () => {
+    const { exitCode } = await runHook(
+      "bash --login -c 'git reset --hard'"
+    );
+    expect(exitCode).toBe(2);
+  });
+
+  test("bash -lc 'git status' (still allowed)", async () => {
+    const { exitCode } = await runHook("bash -lc 'git status'");
+    expect(exitCode).toBe(0);
+  });
+});
+
 describe("Edge cases", () => {
   test("empty command", async () => {
     const { exitCode } = await runHook("");

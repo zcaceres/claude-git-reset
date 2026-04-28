@@ -31,7 +31,11 @@ function stripQuotes(command: string): string {
 // separately by extracting the quoted body and re-running the rules.
 const OP = String.raw`(?:^|&&|\|\||;|\||\$\(|` + "`" + String.raw`|\n|\r)`;
 const GIT_PATH = String.raw`(?:\\)?(?:/[\w./-]+/)?(?:\.\/)?git\b`;
-const GIT = `(?:${OP}\\s*${GIT_PATH}|\\b(?:sudo|command|env|xargs)\\s+(?:/[\\w./-]+/)?git\\b)`;
+// Options between a wrapper and `git`: sudo flags (`-n`, `-E`, `-u user`),
+// env assignments (`FOO=bar`), and long flags. Value-taking short opts
+// (`-u`, `-g`) are listed explicitly so a bare `-n` doesn't swallow `git`.
+const WRAPPER_OPTS = String.raw`(?:\s+(?:-[ug]\s+\S+|[A-Z_][\w]*=\S*|--[\w-]+(?:=\S+)?|-[A-Za-z]+))*`;
+const GIT = `(?:${OP}\\s*${GIT_PATH}|\\b(?:sudo|command|env|xargs)${WRAPPER_OPTS}\\s+(?:/[\\w./-]+/)?git\\b)`;
 // Optional run of git's global options between `git` and the subcommand.
 // Value-taking opts (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`,
 // `--exec-path`, `--super-prefix`, `--list-cmds`) are listed explicitly so
@@ -92,8 +96,12 @@ const RULES: { label: string; pattern: RegExp }[] = [
   },
 ];
 
-// Capture the body of a `(sh|bash|zsh|dash) -c '...'` / "..." invocation.
-const SUBSHELL = /\b(?:sh|bash|zsh|dash)\s+-c\s+(['"])([\s\S]*?)\1/g;
+// Capture the body of a `(sh|bash|zsh|dash) [opts] -c '…'`/"…" invocation.
+// Allows preceding short/long shell flags so `bash -lc`, `bash -l -c`,
+// `bash --login -c`, `zsh -ic` all match. The `-c` itself can be the tail
+// of a short flag cluster (`-lc`, `-ic`, `-Ec`).
+const SUBSHELL =
+  /\b(?:sh|bash|zsh|dash)(?:\s+--?[\w-]+)*\s+-[a-zA-Z]*c\s+(['"])([\s\S]*?)\1/g;
 
 function findDestructiveGit(command: string): string | null {
   const stripped = stripQuotes(command);
