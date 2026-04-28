@@ -26,14 +26,25 @@ function stripQuotes(command: string): string {
 // Matches a git invocation: bare `git`, `\git`, `/usr/bin/git`, `./git`,
 // or wrapped via sudo/command/env/xargs. Anchored to start-of-command or
 // after a shell operator so `mygit` and `... echo git ...` don't match.
-const OP = String.raw`(?:^|&&|\|\||;|\||\$\(|` + "`" + String.raw`|'|"|\n|\r)`;
+// Quotes are intentionally NOT separators here: `echo "foo" git reset --hard`
+// is one echo invocation, not a git invocation. Subshell bodies are handled
+// separately by extracting the quoted body and re-running the rules.
+const OP = String.raw`(?:^|&&|\|\||;|\||\$\(|` + "`" + String.raw`|\n|\r)`;
 const GIT_PATH = String.raw`(?:\\)?(?:/[\w./-]+/)?(?:\.\/)?git\b`;
 const GIT = `(?:${OP}\\s*${GIT_PATH}|\\b(?:sudo|command|env|xargs)\\s+(?:/[\\w./-]+/)?git\\b)`;
-// Optional run of git's global options between `git` and the subcommand:
-// `-C <path>`, `-c key=val`, `--git-dir=…`, `--no-pager`, `-P`, etc.
-// Short opts that take a value (-C, -c) are listed explicitly so a bare
-// short opt like `-P` doesn't greedily swallow the next token (e.g. `clean`).
-const GIT_OPTS = String.raw`(?:\s+(?:-[Cc]\s+\S+|-[A-Za-z]|--[\w-]+(?:=\S+)?))*`;
+// Optional run of git's global options between `git` and the subcommand.
+// Value-taking opts (`-C`, `-c`, `--git-dir`, `--work-tree`, `--namespace`,
+// `--exec-path`, `--super-prefix`, `--list-cmds`) are listed explicitly so
+// they consume their value; bare flags like `-P` or `--no-pager` don't
+// greedily swallow the next token (which would hide `clean`/`push`/etc.).
+const LONG_VALUE_OPTS = String.raw`--(?:git-dir|work-tree|namespace|exec-path|super-prefix|list-cmds)`;
+const GIT_OPTS =
+  String.raw`(?:\s+(?:` +
+  String.raw`-[Cc]\s+\S+` +
+  String.raw`|${LONG_VALUE_OPTS}(?:[= ]\S+)?` +
+  String.raw`|-[A-Za-z]` +
+  String.raw`|--[\w-]+(?:=\S+)?` +
+  String.raw`))*`;
 // Segment boundary: any shell separator (now also newlines).
 const SEG = String.raw`[^&;|\n\r]`;
 
@@ -81,18 +92,20 @@ const RULES: { label: string; pattern: RegExp }[] = [
   },
 ];
 
-const SUBSHELL = /\b(?:sh|bash|zsh|dash)\s+-c\b/;
+// Capture the body of a `(sh|bash|zsh|dash) -c '...'` / "..." invocation.
+const SUBSHELL = /\b(?:sh|bash|zsh|dash)\s+-c\s+(['"])([\s\S]*?)\1/g;
 
 function findDestructiveGit(command: string): string | null {
   const stripped = stripQuotes(command);
   for (const { label, pattern } of RULES) {
     if (pattern.test(stripped)) return label;
   }
-  // For `bash -c '...'` the dangerous part is intentionally inside quotes;
-  // re-run the rules against the unstripped string when a subshell is present.
-  if (SUBSHELL.test(command)) {
+  // For `bash -c '…'` the dangerous part lives inside quotes that
+  // stripQuotes erased. Re-extract each subshell body and check it directly.
+  for (const m of command.matchAll(SUBSHELL)) {
+    const inner = m[2];
     for (const { label, pattern } of RULES) {
-      if (pattern.test(command)) return label;
+      if (pattern.test(inner)) return label;
     }
   }
   return null;

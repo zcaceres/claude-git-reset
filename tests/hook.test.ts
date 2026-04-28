@@ -417,6 +417,77 @@ describe("Git global options before subcommand (P3)", () => {
   });
 });
 
+describe("Long global options with separate value (P1 follow-up)", () => {
+  test("git --git-dir /tmp/.git reset --hard", async () => {
+    const { exitCode } = await runHook(
+      "git --git-dir /tmp/.git reset --hard"
+    );
+    expect(exitCode).toBe(2);
+  });
+
+  test("git --work-tree /tmp push --force", async () => {
+    const { exitCode } = await runHook("git --work-tree /tmp push --force");
+    expect(exitCode).toBe(2);
+  });
+
+  test("git --namespace foo clean -fdx", async () => {
+    const { exitCode } = await runHook("git --namespace foo clean -fdx");
+    expect(exitCode).toBe(2);
+  });
+
+  test("git --exec-path /tmp branch -D feature", async () => {
+    const { exitCode } = await runHook(
+      "git --exec-path /tmp branch -D feature"
+    );
+    expect(exitCode).toBe(2);
+  });
+
+  test("git --git-dir=/tmp/.git reset --hard (= form still works)", async () => {
+    const { exitCode } = await runHook(
+      "git --git-dir=/tmp/.git reset --hard"
+    );
+    expect(exitCode).toBe(2);
+  });
+
+  test("git --git-dir /tmp/.git status (still allowed)", async () => {
+    const { exitCode } = await runHook("git --git-dir /tmp/.git status");
+    expect(exitCode).toBe(0);
+  });
+});
+
+describe("Quoted prefix false positives (P2 follow-up)", () => {
+  test('echo "" git reset --hard (echoes only, not blocked)', async () => {
+    const { exitCode } = await runHook('echo "" git reset --hard');
+    expect(exitCode).toBe(0);
+  });
+
+  test('echo "prefix" git push --force (echoes only, not blocked)', async () => {
+    const { exitCode } = await runHook('echo "prefix" git push --force');
+    expect(exitCode).toBe(0);
+  });
+
+  test('printf "%s" git clean -fdx (printfs only, not blocked)', async () => {
+    const { exitCode } = await runHook('printf "%s" git clean -fdx');
+    expect(exitCode).toBe(0);
+  });
+
+  test("echo 'foo' git reset --hard (single-quoted prefix)", async () => {
+    const { exitCode } = await runHook("echo 'foo' git reset --hard");
+    expect(exitCode).toBe(0);
+  });
+
+  // Subshells must still be blocked even though they use quotes.
+  test("bash -c 'git reset --hard HEAD' still blocked", async () => {
+    const { exitCode } = await runHook("bash -c 'git reset --hard HEAD'");
+    expect(exitCode).toBe(2);
+  });
+
+  test('sh -c "git push --force" still blocked', async () => {
+    const { exitCode } = await runHook('sh -c "git push --force"');
+    expect(exitCode).toBe(2);
+  });
+});
+
 describe("Edge cases", () => {
   test("empty command", async () => {
     const { exitCode } = await runHook("");
