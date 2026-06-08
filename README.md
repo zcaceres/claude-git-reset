@@ -1,96 +1,41 @@
-# Block Destructive Git Commands
+# claude-git-reset — archived
 
-A Claude Code hook that blocks destructive git commands — `git reset --hard`, force pushes, force cleans, force branch deletions — while letting safer alternatives through.
+> **This repo is archived.** The hook has moved into [`zcaceres/skills`](https://github.com/zcaceres/skills)
+> as the `safety-git-reset-guard` skill, with pre-built binaries (no `bun` runtime
+> dependency on the host) and a self-wiring install script.
 
-> **Note:** This is a best-effort pattern matcher, not a comprehensive sandbox. There will always be creative ways to invoke git that aren't covered. Use this as one layer of defense, not the only one.
+## New home
 
-## Blocked Patterns
+- **Skill:** [`zcaceres/skills/skills/safety-git-reset-guard`](https://github.com/zcaceres/skills/tree/main/skills/safety-git-reset-guard)
+- **Install:**
+  ```sh
+  npx skills add zcaceres/skills -s safety-git-reset-guard -g
+  ~/.claude/skills/safety-git-reset-guard/scripts/install.sh
+  ```
+- The second step wires the PreToolUse:Bash hook into `~/.claude/settings.json`
+  with a timestamped backup. Idempotent — re-running is a no-op.
 
-| Class | Examples |
-|---|---|
-| `git reset --hard` | any target — `HEAD`, commit SHAs, branches, refs |
-| `git push --force` / `-f` | unconditional force push (`--force-with-lease` is allowed) |
-| `git clean -f*` / `--force` | `-f`, `-fd`, `-fdx`, `-xf`, `--force` |
-| `git checkout <path>` | `git checkout .`, `git checkout -- file` (worktree-discard form) |
-| `git branch -D` / `--delete --force` | force-deleting unmerged branches |
-| `git stash drop` / `clear` | dropping individual stashes or clearing the list |
-| `git worktree remove --force` / `-f` | force-removing dirty worktrees |
+## Why the move
 
-### Bypass coverage
+This repo shipped a TypeScript hook that required `bun` on every host and a
+manual settings.json patch. The skills-repo version:
 
-- Path variants: `/usr/bin/git`, `./git`, `\git`
-- Wrappers: `sudo git`, `command git`, `env git`, `xargs git`
-- Subshells: `sh -c '...'`, `bash -c '...'`, `zsh -c '...'`, `dash -c '...'`
-- Chained: `cmd && git reset --hard`, `cmd; git push --force`, etc.
+- Ships pre-built binaries per OS/arch in `scripts/bin/`, dispatched by
+  `scripts/run.sh` — no `bun` install required for end users.
+- Bundles a `scripts/install.sh` that handles the settings.json wiring
+  idempotently with backups.
+- Lives next to the other safety hooks (`safety-rm-rf-guard`,
+  `safety-dotenv-guard`, `safety-op-creds`) for one consistent install path.
 
-## Allowed (explicitly)
+Same blocked / allowed pattern set as documented previously, same caveat:
+this is one layer of defense, not a sandbox.
 
-- `git reset` (no flag), `git reset --soft`, `git reset --mixed`
-- `git push --force-with-lease`, `git push --force-with-lease=ref:expected`
-- `git checkout main`, `git checkout -b feature`
-- `git clean -n` / `--dry-run`
-- `git stash`, `git stash push`, `git stash pop`, `git stash apply`
-- `git branch -d merged-branch` (refuses if unmerged)
-- Quoted strings: `echo 'git reset --hard'`, `git commit -m "fix reset --hard bug"`
+## Migrating from this repo
 
-## Installation
+If you previously wired the hook from `/path/to/claude-git-reset/src/index.ts`:
 
-### 1. Install Bun
+1. Remove that entry from `.claude/settings.json` (it's a one-line PreToolUse
+   command hook). Keep a backup first.
+2. Run the two install commands above.
 
-```bash
-curl -fsSL https://bun.sh/install | bash
-```
-
-### 2. Clone and install
-
-```bash
-git clone <repo-url>
-cd claude-git-reset
-bun install
-```
-
-### 3. Configure Claude Code
-
-Add to your `.claude/settings.json` or `.claude/settings.local.json`:
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun run /path/to/claude-git-reset/src/index.ts"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Replace `/path/to/claude-git-reset` with the actual path, or use `$CLAUDE_PROJECT_DIR` if installing per-project.
-
-You can stack this alongside `claude-rm-rf` — both hooks run on every Bash call and either can block.
-
-## Development
-
-```bash
-bun test
-bun run build   # standalone executable, ~60MB
-```
-
-## How It Works
-
-The hook runs on every `Bash` tool call via `PreToolUse`:
-
-1. Read JSON from stdin (`tool_input.command`).
-2. Strip quoted strings to avoid false positives on `echo 'git reset --hard'`.
-3. For each blocked class, run a regex anchored to a "git invocation" — start of command, after a shell operator, or behind a known wrapper (`sudo`, `command`, `env`, `xargs`).
-4. For `bash -c '...'` style subshells, re-run the rules against the *original* (unstripped) command, since the dangerous part is intentionally inside quotes.
-5. On match: exit 2 with a `BLOCKED:` message identifying the rule and listing safer alternatives.
-6. Otherwise: exit 0 to allow.
-
-Inspired by and structured after [`claude-rm-rf`](https://github.com/zcaceres/claude-rm-rf).
+The skills-repo install drops a pointer into the same `PreToolUse:Bash` slot.
